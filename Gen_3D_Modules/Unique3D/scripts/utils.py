@@ -293,6 +293,104 @@ def simple_clean_mesh(pyml_mesh: ml.Mesh, apply_smooth=True, stepsmoothnum=1, ap
         ms.apply_filter("meshing_surface_subdivision_loop", iterations=2, threshold=PercentageValue(sub_divide_threshold))
     return meshlab_mesh_to_py3dmesh(ms.current_mesh())
 
+def advanced_clean_mesh(pyml_mesh: ml.Mesh, 
+    apply_smooth=True, 
+    stepsmoothnum=1, 
+    apply_sub_divide=False, 
+    sub_divide_threshold=0.25, 
+    v_pct=1,
+    min_f=0,
+    min_d=0,
+    repair=False,
+    remesh=False,
+    remesh_size=0.01,
+    remesh_iters=3,
+    close_holes=False,
+    max_hole_size=1000,
+    refine_holes=False):
+    ms = ml.MeshSet()
+    ms.add_mesh(pyml_mesh, "cube_mesh_adv")
+    
+    # filters
+    ms.meshing_remove_unreferenced_vertices()  # verts not refed by any faces
+
+    if v_pct > 0:
+        ms.meshing_merge_close_vertices(
+            threshold=ml.PercentageValue(v_pct)
+        )  # 1/10000 of bounding box diagonal
+
+    ms.meshing_remove_duplicate_faces()  # faces defined by the same verts
+    ms.meshing_remove_null_faces()  # faces with area == 0
+
+    if min_d > 0:
+        ms.meshing_remove_connected_component_by_diameter(
+            mincomponentdiag=ml.PercentageValue(min_d)
+        )
+
+    if min_f > 0:
+        ms.meshing_remove_connected_component_by_face_number(mincomponentsize=min_f)
+
+    # be careful: may lead to strangely missing triangles...
+    if repair:
+        # ms.meshing_remove_t_vertices(method=0, threshold=40, repeat=True)
+        ms.meshing_repair_non_manifold_edges(method=0)
+        ms.meshing_repair_non_manifold_vertices(vertdispratio=0)
+    
+    if close_holes:
+        ms.meshing_close_holes(maxholesize = max_hole_size, refinehole = refine_holes)
+
+    if remesh:
+        # ms.apply_coord_taubin_smoothing()
+        ms.meshing_isotropic_explicit_remeshing(
+            iterations=remesh_iters, targetlen=ml.PureValue(remesh_size)
+        )
+    
+    ms.current_mesh().compact()
+    
+    if apply_smooth:
+        ms.apply_filter("apply_coord_laplacian_smoothing", stepsmoothnum=stepsmoothnum, cotangentweight=False)
+    if apply_sub_divide:    # 5s, slow
+        ms.apply_filter("meshing_repair_non_manifold_vertices")
+        ms.apply_filter("meshing_repair_non_manifold_edges", method='Remove Faces')
+        ms.apply_filter("meshing_surface_subdivision_loop", iterations=2, threshold=PercentageValue(sub_divide_threshold))
+        
+    return meshlab_mesh_to_py3dmesh(ms.current_mesh())
+
+def close_mesh_holes(pyml_mesh: ml.Mesh, cleanup_first=True, max_hole_size=1000, refine_holes=False):
+    ms = ml.MeshSet()
+    ms.add_mesh(pyml_mesh, "holes_mesh")
+
+    # filters
+    if cleanup_first:
+        ms.meshing_remove_unreferenced_vertices()  # verts not refed by any faces
+        ms.meshing_remove_duplicate_faces()  # faces defined by the same verts
+        ms.meshing_remove_null_faces()  # faces with area == 0
+
+    ms.meshing_close_holes(maxholesize = max_hole_size, refinehole = refine_holes)
+
+    # extract mesh
+    m = ms.current_mesh()
+    m.compact()
+
+    return meshlab_mesh_to_py3dmesh(m)
+
+def sharpen_mesh(pyml_mesh: ml.Mesh, cleanup_first=True, weight=0.4, iterations=25):
+    ms = ml.MeshSet()
+    ms.add_mesh(pyml_mesh, "sharpen_mesh")
+
+    # filters
+    if cleanup_first:
+        ms.meshing_remove_unreferenced_vertices()  # verts not refed by any faces
+        ms.meshing_remove_duplicate_faces()  # faces defined by the same verts
+        ms.meshing_remove_null_faces()  # faces with area == 0
+        
+    ms.apply_coord_unsharp_mask(weight = weight, weightorig = 1.000000, iterations = iterations)
+
+    # extract mesh
+    m = ms.current_mesh()
+    m.compact()
+
+    return meshlab_mesh_to_py3dmesh(m)
 
 def expand2square(pil_img, background_color):
     width, height = pil_img.size

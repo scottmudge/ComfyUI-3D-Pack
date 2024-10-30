@@ -2,6 +2,7 @@ import os
 import gc
 import math
 import copy
+import hashlib
 from enum import Enum
 from collections import OrderedDict
 import folder_paths as comfy_paths
@@ -78,7 +79,7 @@ from Era3D.utils.misc import load_config as load_config_era3d
 from Unique3D.custum_3d_diffusion.custum_pipeline.unifield_pipeline_img2mvimg import StableDiffusionImage2MVCustomPipeline
 from Unique3D.custum_3d_diffusion.custum_pipeline.unifield_pipeline_img2img import StableDiffusionImageCustomPipeline
 from Unique3D.scripts.mesh_init import fast_geo
-from Unique3D.scripts.utils import from_py3d_mesh, to_py3d_mesh, to_pyml_mesh, simple_clean_mesh
+from Unique3D.scripts.utils import from_py3d_mesh, to_py3d_mesh, to_pyml_mesh, simple_clean_mesh, advanced_clean_mesh, close_mesh_holes, sharpen_mesh
 from Unique3D.scripts.project_mesh import multiview_color_projection, multiview_color_projection_texture, get_cameras_list, get_orbit_cameras_list
 from Unique3D.mesh_reconstruction.recon import reconstruct_stage1
 from Unique3D.mesh_reconstruction.refine import run_mesh_refine
@@ -573,7 +574,7 @@ class Fast_Clean_Mesh:
                 "sub_divide_threshold": ("FLOAT", {"default": 0.25, "step": 0.001}),
             },
         }
-
+        
     RETURN_TYPES = (
         "MESH",
     )
@@ -590,6 +591,106 @@ class Fast_Clean_Mesh:
 
         mesh = Mesh(v=vertices, f=faces, device=DEVICE)
 
+        return (mesh,)
+    
+class Advanced_Clean_Mesh:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mesh": ("MESH",),
+                "enable":("BOOLEAN",{"default":True}),
+                "cleanup_block_nf":("FLOAT",{"default":0.05,"min":0,"max":1.0,"step":0.05}),# Clean out blocks with faces smaller than this percentage (relative to the total number of faces)
+                "cleanup_block_sc":("INT",{"default":20,"min":0,"max":100,"step":1}),# Clean out blocks smaller than this diameter
+                "merge_vertex_threshold":("INT",{"default":1,"min":1,"max":1000,"step":1}),# merge vertex threshold
+                "repair_face":("BOOLEAN",{"default":True}),# Whether to repair non-manifold surfaces
+                "close_holes":("BOOLEAN",{"default":True}),
+                "max_hole_size":("INT",{"default":1000,"min":1,"max":5000,"step":1}),
+                "refine_holes":("BOOLEAN",{"default":False}),
+                "apply_smooth": ("BOOLEAN", {"default": True},),
+                "smooth_step": ("INT", {"default": 1, "min": 0, "max": 0xffffffffffffffff}),
+                "apply_sub_divide": ("BOOLEAN", {"default": True},),
+                "sub_divide_threshold": ("FLOAT", {"default": 0.25, "step": 0.001}),
+            },
+        }
+
+    RETURN_TYPES = (
+        "MESH",
+    )
+    RETURN_NAMES = (
+        "mesh",
+    )
+    FUNCTION = "adv_clean_mesh"
+    CATEGORY = "Comfy3D/Preprocessor"
+
+    def adv_clean_mesh(self, mesh, enable, cleanup_block_nf, cleanup_block_sc, merge_vertex_threshold, repair_face, close_holes, 
+                   max_hole_size, refine_holes, apply_smooth, smooth_step, apply_sub_divide, sub_divide_threshold):
+        if enable:
+            nf=len(mesh.f.cpu().long().numpy().astype(np.int32))
+            f1=int(nf*cleanup_block_nf)
+            meshes = advanced_clean_mesh(to_pyml_mesh(mesh.v, mesh.f), apply_smooth=apply_smooth, stepsmoothnum=smooth_step, apply_sub_divide=apply_sub_divide, sub_divide_threshold=sub_divide_threshold,
+                                        v_pct=merge_vertex_threshold, min_f=f1, min_d=cleanup_block_sc, repair=repair_face, remesh=False,
+                                        close_holes=close_holes, max_hole_size=max_hole_size, refine_holes=refine_holes).to(DEVICE)
+            vertices, faces, _ = from_py3d_mesh(meshes)
+            mesh = Mesh(v=vertices, f=faces, device=DEVICE)
+        return (mesh,)
+    
+class Close_Mesh_Holes:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mesh": ("MESH",),
+                "enable":("BOOLEAN",{"default":True}),
+                "cleanup_first":("BOOLEAN",{"default":True}),
+                "max_hole_size":("INT",{"default":1000,"min":1,"max":5000,"step":1}),
+                "refine_holes":("BOOLEAN",{"default":False}),
+            },
+        }
+
+    RETURN_TYPES = (
+        "MESH",
+    )
+    RETURN_NAMES = (
+        "mesh",
+    )
+    FUNCTION = "close_mesh_holes"
+    CATEGORY = "Comfy3D/Preprocessor"
+
+    def close_mesh_holes(self, mesh, enable, cleanup_first, max_hole_size, refine_holes):
+        if enable:
+            meshes = close_mesh_holes(to_pyml_mesh(mesh.v, mesh.f), cleanup_first=cleanup_first, max_hole_size=max_hole_size, refine_holes=refine_holes).to(DEVICE)
+            vertices, faces, _ = from_py3d_mesh(meshes)
+            mesh = Mesh(v=vertices, f=faces, device=DEVICE)
+        return (mesh,)
+    
+class Sharpen_Mesh:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mesh": ("MESH",),
+                "enable":("BOOLEAN",{"default":True}),
+                "cleanup_first":("BOOLEAN",{"default":True}),
+                "weight":("FLOAT",{"default":0.4,"min":0.01,"max":1.0,"step":0.01}),
+                "iterations":("INT",{"default":25,"min":1,"max":200,"step":1}),
+            },
+        }
+
+    RETURN_TYPES = (
+        "MESH",
+    )
+    RETURN_NAMES = (
+        "mesh",
+    )
+    FUNCTION = "sharpen_mesh_func"
+    CATEGORY = "Comfy3D/Preprocessor"
+
+    def sharpen_mesh_func(self, mesh, enable, cleanup_first, weight, iterations):
+        if enable:
+            meshes = sharpen_mesh(to_pyml_mesh(mesh.v, mesh.f), cleanup_first=cleanup_first, weight=weight, iterations=iterations).to(DEVICE)
+            vertices, faces, _ = from_py3d_mesh(meshes)
+            mesh = Mesh(v=vertices, f=faces, device=DEVICE)
         return (mesh,)
 
 class Switch_3DGS_Axis:
