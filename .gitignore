@@ -169,3 +169,5 @@ _Pre_Builds/_Build_Wheels
 _Pre_Builds/_Libs
 
 .idea
+
+Gen_3D_Modules/StableFast3D/sf3d/.slangtorch_cache/

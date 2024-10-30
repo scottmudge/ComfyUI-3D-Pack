@@ -2586,8 +2586,8 @@ class Era3D_MVDiffusion_Model:
         images_pred = out[bsz:] 
         
         # [N, 3, H, W] -> [N, H, W, 3]
-        multiview_images = images_pred.permute(0, 2, 3, 1).to(reference_image.dtype, dtype=reference_image.device)   
-        multiview_normals = normals_pred.permute(0, 2, 3, 1).to(reference_image.dtype, dtype=reference_image.device)
+        multiview_images = images_pred.permute(0, 2, 3, 1).to(reference_image.device, dtype=reference_image.dtype)   
+        multiview_normals = normals_pred.permute(0, 2, 3, 1).to(reference_image.device, dtype=reference_image.dtype)
         
         azimuths = [0, 45, 90, 180, -90, -45]
         elevations = [0.0] * 6
