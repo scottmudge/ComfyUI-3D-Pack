@@ -392,6 +392,63 @@ def sharpen_mesh(pyml_mesh: ml.Mesh, cleanup_first=True, weight=0.4, iterations=
 
     return meshlab_mesh_to_py3dmesh(m)
 
+def mesh_map_vert_color_to_texture(pyml_mesh: ml.Mesh, cleanup_first=True, region_num=25, overlap=False, texture_width=2048, texture_height=2048):
+    ms = ml.MeshSet()
+    ms.add_mesh(pyml_mesh, "texture_mesh")
+    ms.add_mesh(pyml_mesh, "texture_mesh2")
+
+    # filters
+    if cleanup_first:
+        ms.meshing_remove_unreferenced_vertices()  # verts not refed by any faces
+        ms.meshing_remove_duplicate_faces()  # faces defined by the same verts
+        ms.meshing_remove_null_faces()  # faces with area == 0
+    
+    ms.set_current_mesh(1)
+    ms.generate_voronoi_atlas_parametrization(regionnum = region_num, overlapflag = overlap)
+    ms.set_current_mesh(0)
+    ms.transfer_attributes_to_texture_per_vertex(sourcemesh=0, targetmesh=2, attributeenum='Vertex Color', textw=texture_width, texth=texture_height)
+    ms.set_current_mesh(0)
+    ms.save_current_mesh("C:/test0.obj", save_textures = True)
+    ms.set_current_mesh(1)
+    ms.save_current_mesh("C:/test1.obj", save_textures = True)
+    ms.set_current_mesh(2)
+    ms.save_current_mesh("C:/test2.obj", save_textures = True)
+    
+    # extract mesh
+    m = ms.current_mesh()
+    m.compact()
+    ms.save_current_mesh("C:/test.obj", save_textures = True)
+
+    return meshlab_mesh_to_py3dmesh(m)
+
+def mesh_remove_isolated_pieces(pyml_mesh: ml.Mesh, cleanup_first=True, diag_pcnt=0.1, remove_unref=True):
+    ms = ml.MeshSet()
+    ms.add_mesh(pyml_mesh, "iso_piece_mesh")
+
+    # filters
+    if cleanup_first:
+        ms.meshing_remove_unreferenced_vertices()  # verts not refed by any faces
+        ms.meshing_remove_duplicate_faces()  # faces defined by the same verts
+        ms.meshing_remove_null_faces()  # faces with area == 0
+        
+    if diag_pcnt > 1.0:
+        diag_pcnt = 1.0
+    elif diag_pcnt < 0.0:
+        diag_pcnt = 0.0
+    
+    ms.meshing_remove_connected_component_by_diameter(mincomponentdiag = ml.PercentageValue((diag_pcnt * 100.0)), removeunref = remove_unref)
+    
+    ms.meshing_remove_unreferenced_vertices()  # verts not refed by any faces
+    ms.meshing_remove_duplicate_faces()  # faces defined by the same verts
+    ms.meshing_remove_null_faces()  # faces with area == 0
+
+    # extract mesh
+    m = ms.current_mesh()
+    m.compact()
+
+    return meshlab_mesh_to_py3dmesh(m)
+
+
 def expand2square(pil_img, background_color):
     width, height = pil_img.size
     if width == height:

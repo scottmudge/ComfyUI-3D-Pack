@@ -79,7 +79,7 @@ from Era3D.utils.misc import load_config as load_config_era3d
 from Unique3D.custum_3d_diffusion.custum_pipeline.unifield_pipeline_img2mvimg import StableDiffusionImage2MVCustomPipeline
 from Unique3D.custum_3d_diffusion.custum_pipeline.unifield_pipeline_img2img import StableDiffusionImageCustomPipeline
 from Unique3D.scripts.mesh_init import fast_geo
-from Unique3D.scripts.utils import from_py3d_mesh, to_py3d_mesh, to_pyml_mesh, simple_clean_mesh, advanced_clean_mesh, close_mesh_holes, sharpen_mesh
+from Unique3D.scripts.utils import from_py3d_mesh, to_py3d_mesh, to_pyml_mesh, simple_clean_mesh, advanced_clean_mesh, close_mesh_holes, sharpen_mesh, mesh_remove_isolated_pieces, mesh_map_vert_color_to_texture
 from Unique3D.scripts.project_mesh import multiview_color_projection, multiview_color_projection_texture, get_cameras_list, get_orbit_cameras_list
 from Unique3D.mesh_reconstruction.recon import reconstruct_stage1
 from Unique3D.mesh_reconstruction.refine import run_mesh_refine
@@ -634,6 +634,67 @@ class Advanced_Clean_Mesh:
             vertices, faces, _ = from_py3d_mesh(meshes)
             mesh = Mesh(v=vertices, f=faces, device=DEVICE)
         return (mesh,)
+    
+class Remove_Mesh_Isolated_Pieces:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mesh": ("MESH",),
+                "enable":("BOOLEAN",{"default":True}),
+                "diag_pcnt":("FLOAT",{"default":0.10,"min":0,"max":1.0,"step":0.01}),
+                "remove_unref":("BOOLEAN",{"default":True}),
+                "cleanup_first":("BOOLEAN",{"default":True}),
+            },
+        }
+
+    RETURN_TYPES = (
+        "MESH",
+    )
+    RETURN_NAMES = (
+        "mesh",
+    )
+    FUNCTION = "mesh_remove_isolated_pieces"
+    CATEGORY = "Comfy3D/Preprocessor"
+
+    def mesh_remove_isolated_pieces(self, mesh, enable, diag_pcnt, remove_unref, cleanup_first):
+        if enable:
+            meshes = mesh_remove_isolated_pieces(to_pyml_mesh(mesh.v, mesh.f), cleanup_first=cleanup_first, diag_pcnt=diag_pcnt, remove_unref=remove_unref).to(DEVICE)
+            vertices, faces, _ = from_py3d_mesh(meshes)
+            mesh = Mesh(v=vertices, f=faces, device=DEVICE)
+        return (mesh,)
+    
+class Mesh_Map_Vert_Color_To_Texture:
+    @classmethod
+    def INPUT_TYPES(cls):
+        return {
+            "required": {
+                "mesh": ("MESH",),
+                "enable":("BOOLEAN",{"default":True}),
+                "region_num":("INT",{"default":25,"min":10,"max":120,"step":1}),
+                "overlap":("BOOLEAN",{"default":False}),
+                "texture_width":("INT",{"default":2048,"min":512,"max":8192,"step":128}),
+                "texture_height":("INT",{"default":2048,"min":512,"max":8192,"step":128}),
+                "cleanup_first":("BOOLEAN",{"default":True}),
+            },
+        }
+
+    RETURN_TYPES = (
+        "MESH",
+    )
+    RETURN_NAMES = (
+        "mesh",
+    )
+    FUNCTION = "mesh_vert_col_to_texture"
+    CATEGORY = "Comfy3D/Preprocessor"
+
+    def mesh_vert_col_to_texture(self, mesh, enable, region_num, overlap, texture_width, texture_height, cleanup_first):
+        if enable:
+            meshes = mesh_map_vert_color_to_texture(to_pyml_mesh(mesh.v, mesh.f), cleanup_first=cleanup_first, region_num=region_num, overlap=overlap, texture_width=texture_width, texture_height=texture_height).to(DEVICE)
+            vertices, faces, _ = from_py3d_mesh(meshes)
+            mesh = Mesh(v=vertices, f=faces, device=DEVICE)
+        return (mesh,)
+    
     
 class Close_Mesh_Holes:
     @classmethod
